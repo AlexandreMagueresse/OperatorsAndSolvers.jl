@@ -14,15 +14,17 @@ using Plots
 T = Float64
 
 # problem_id = 1 # Stiff linear ODE
-# problem_id = 2 # Nonlinear ODE
+problem_id = 2 # Nonlinear ODE
 # problem_id = 3 # Harmonic oscillator
-problem_id = 4 # 1D minimisation (Gradient flow)
+# problem_id = 4 # 1D minimisation (Gradient flow)
 
 if problem_id == 1
   # u̇ = λ * (u - g(t)) + g'(t)
   N = 1
 
-  struct MyOp1{T,F,G} <: AbstractODEOperator{N,NonlinearOperatorType}
+  struct MyOp1{T,F,G} <:
+         AbstractQuasilinearODEOperator{N}
+    # AbstractODEOperator{N,NonlinearOperatorType}
     λ::T
     g::F
     ∇g::G
@@ -92,7 +94,8 @@ elseif problem_id == 2
   # u̇ = 1 - u^2
   N = 1
 
-  struct MyOp2 <: AbstractODEOperator{N,NonlinearOperatorType}
+  struct MyOp2 <:
+         AbstractODEOperator{N,NonlinearOperatorType}
   end
 
   function residual!(
@@ -154,7 +157,8 @@ elseif problem_id == 3
   # dU̇ = [0 1, -ω² 0] U (u̇,-ω²u)
   N = 2
 
-  struct MyOp3{T} <: AbstractODEOperator{N,NonlinearOperatorType}
+  struct MyOp3{T} <:
+         AbstractODEOperator{N,NonlinearOperatorType}
     ω²::T
   end
 
@@ -228,7 +232,8 @@ elseif problem_id == 4
   # u̇ = -∇f(u)
   N = 1
 
-  struct MyOp4{F,G} <: AbstractODEOperator{N,NonlinearOperatorType}
+  struct MyOp4{F,G} <:
+         AbstractODEOperator{N,NonlinearOperatorType}
     ∇f::F
     ∇²f::G
   end
@@ -295,24 +300,30 @@ dt = (tₑ - t₋) / 100
 #################
 # System solver #
 #################
-maxiter = 1_000
-atol = 1000 * eps(T)
-rtol = 1000 * eps(T)
-config = IterativeSystemSolverConfig(maxiter, atol, rtol)
-
 F = Formulation_U
 # F = Formulation_U̇
 
-lsv = LUSolver()
-subsv = NewtonRaphsonSolver(lsv, config)
+if op isa AbstractQuasilinearODEOperator
+  subsv = LUSolver()
+else
+  maxiter = 1_000
+  atol = 1000 * eps(T)
+  rtol = 1000 * eps(T)
+  config = IterativeSystemSolverConfig(maxiter, atol, rtol)
 
-if F == Formulation_U
-  α = T(dt^2 / 3)
-elseif F == Formulation_U̇
-  α = T(1 / 3)
+  # Newton-Raphson
+  # lsv = LUSolver()
+  # subsv = NewtonRaphsonSolver(lsv, config)
+
+  # Gradient descent
+  if F == Formulation_U
+    α = T(dt^2 / 3)
+  elseif F == Formulation_U̇
+    α = T(1 / 3)
+  end
+  lssv = ConstantStepper(α)
+  subsv = GradientDescentSolver(lssv, config)
 end
-lssv = ConstantStepper(α)
-subsv = GradientDescentSolver(lssv, config)
 
 ##############
 # ODE Solver #

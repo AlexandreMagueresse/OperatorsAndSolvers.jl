@@ -119,10 +119,11 @@ export AbstractQuasilinearODEOperator
 export AbstractSemilinearODEOperator
 export AbstractLinearODEOperator
 
-export AbstractFormulation
+export AbstractFormulationType
 export Formulation_U
 export Formulation_U̇
 export AbstractODESolver
+export FormulationType
 export ODESolverCache
 
 export ExplicitEulerSolver

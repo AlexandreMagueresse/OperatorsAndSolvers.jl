@@ -21,7 +21,8 @@ using OperatorsAndSolvers.Systems
 
 include("Utils.jl")
 export _make_us
-export _make_u̇
+export _make_u̇!
+export _make_u!
 
 include("OperatorsAndSolvers.jl")
 export AbstractODEOperator
@@ -41,10 +42,11 @@ export AbstractQuasilinearODEOperator
 export AbstractSemilinearODEOperator
 export AbstractLinearODEOperator
 
-export AbstractFormulation
+export AbstractFormulationType
 export Formulation_U
 export Formulation_U̇
 export AbstractODESolver
+export FormulationType
 export ODESolverCache
 
 include("ExplicitEuler.jl")

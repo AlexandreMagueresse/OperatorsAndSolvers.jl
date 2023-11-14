@@ -284,29 +284,31 @@ for `AbstractODEOperator{N,LinearOperatorType}`.
 const AbstractLinearODEOperator{N} =
   AbstractODEOperator{N,LinearOperatorType}
 
-#######################
-# AbstractFormulation #
-#######################
+###########################
+# AbstractFormulationType #
+###########################
 """
-    AbstractFormulation
+    AbstractFormulationType
 
 Abstract trait that encodes the formulation type of an ODE solver.
 """
-abstract type AbstractFormulation end
+abstract type AbstractFormulationType end
 
 """
     Formulation_U
 
 Trait of an ODE solver solving for U.
 """
-struct Formulation_U <: AbstractFormulation end
+struct Formulation_U <:
+       AbstractFormulationType end
 
 """
     Formulation_U̇
 
 Trait of an ODE solver solving for U̇.
 """
-struct Formulation_U̇ <: AbstractFormulation end
+struct Formulation_U̇ <:
+       AbstractFormulationType end
 
 #####################
 # AbstractODESolver #
@@ -319,8 +321,17 @@ Abstract type for ODE solvers.
 # Mandatory methods
 - `allocate_subcache`
 """
-abstract type AbstractODESolver{F<:AbstractFormulation} <:
+abstract type AbstractODESolver{F<:AbstractFormulationType} <:
               AbstractSolver end
+
+# FormulationType trait
+"""
+    FormulationType(sv::AbstractODESolver) -> AbstractFormulationType
+
+Implement the `FormulationType` trait for an `AbstractODESolver`.
+"""
+FormulationType(sv::AbstractODESolver) = FormulationType(typeof(sv))
+FormulationType(::Type{<:AbstractODESolver{F}}) where {F} = F()
 
 ##################
 # ODESolverCache #
@@ -349,6 +360,15 @@ Allocate the subcache of the ODE solver.
 """
 function allocate_subcache(
   sv::AbstractODESolver, op::AbstractODEOperator,
+  t₋::Real, dt::Real, u₋::AbstractVector,
+  u̇_temp::AbstractVector, r_temp::AbstractVector, j_temp::AbstractVector
+)
+  F = FormulationType(sv)
+  allocate_subcache(F, sv, op, t₋, dt, u₋, u̇_temp, r_temp, j_temp)
+end
+
+function allocate_subcache(
+  F::AbstractFormulationType, sv::AbstractODESolver, op::AbstractODEOperator,
   t₋::Real, dt::Real, u₋::AbstractVector,
   u̇_temp::AbstractVector, r_temp::AbstractVector, j_temp::AbstractVector
 )
@@ -428,6 +448,15 @@ using the cache from a previous solve.
 """
 function solve!(
   u₊::AbstractVector, sv::AbstractODESolver,
+  op::AbstractODEOperator, t₋::Real, dt::Real, u₋::AbstractVector,
+  cache::ODESolverCache; kwargs...
+)
+  F = FormulationType(sv)
+  solve!(u₊, F, sv, op, t₋, dt, u₋, cache; kwargs...)
+end
+
+function solve!(
+  u₊::AbstractVector, F::AbstractFormulationType, sv::AbstractODESolver,
   op::AbstractODEOperator, t₋::Real, dt::Real, u₋::AbstractVector,
   cache::ODESolverCache; kwargs...
 )
