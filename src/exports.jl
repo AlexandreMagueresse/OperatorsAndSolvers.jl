@@ -83,6 +83,7 @@ export get_config
 export update_direction!
 
 export IterativeSystemSolverCache
+export reset_cache!
 
 export IterativeSystemSolverConfig
 export get_maxiter
@@ -94,6 +95,7 @@ export update_lsop!
 
 export NewtonRaphsonSolver
 export GradientDescentSolver
+export ConjugateGradientSolver
 
 ########
 # ODEs #
@@ -101,8 +103,6 @@ export GradientDescentSolver
 using OperatorsAndSolvers.ODEs
 
 export AbstractODEOperator
-export residual
-export residual!
 export allocate_jacobian_U
 export jacobian_U
 export jacobian_U!
@@ -120,10 +120,15 @@ export AbstractSemilinearODEOperator
 export AbstractLinearODEOperator
 
 export AbstractFormulationType
-export Formulation_U
-export Formulation_U̇
+export UFormulationType
+export U̇FormulationType
+export AbstractODESolverType
+export ImplicitODESolverType
+export ExplicitODESolverType
 export AbstractODESolver
 export FormulationType
+export ODESolverType
 export ODESolverCache
 
 export ExplicitEulerSolver
+export ImplicitEulerSolver

@@ -35,7 +35,9 @@ export isconverged
 export AbstractIterativeSystemSolver
 export get_config
 export update_direction!
+
 export IterativeSystemSolverCache
+export reset_cache!
 
 include("IterativeSystemSolverConfig.jl")
 export IterativeSystemSolverConfig
@@ -52,5 +54,8 @@ export NewtonRaphsonSolver
 
 include("IterativeSolvers/GradientDescent.jl")
 export GradientDescentSolver
+
+include("IterativeSolvers/ConjugateGradient.jl")
+export ConjugateGradientSolver
 
 end # module Systems

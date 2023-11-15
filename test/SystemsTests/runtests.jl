@@ -14,4 +14,8 @@ end
   include("GradientDescentTests.jl")
 end
 
+@testset "ConjugateGradient" begin
+  include("ConjugateGradientTests.jl")
+end
+
 end # module SystemsTests

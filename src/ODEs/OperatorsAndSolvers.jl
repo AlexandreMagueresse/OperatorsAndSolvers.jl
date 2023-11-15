@@ -290,25 +290,51 @@ const AbstractLinearODEOperator{N} =
 """
     AbstractFormulationType
 
-Abstract trait that encodes the formulation type of an ODE solver.
+Abstract trait that tells whether an ODE solver solves for U or U̇.
 """
 abstract type AbstractFormulationType end
 
 """
-    Formulation_U
+    UFormulationType
 
 Trait of an ODE solver solving for U.
 """
-struct Formulation_U <:
+struct UFormulationType <:
        AbstractFormulationType end
 
 """
-    Formulation_U̇
+    U̇FormulationType
 
 Trait of an ODE solver solving for U̇.
 """
-struct Formulation_U̇ <:
+struct U̇FormulationType <:
        AbstractFormulationType end
+
+#########################
+# AbstractODESolverType #
+#########################
+"""
+    AbstractODESolverType
+
+Abstract trait that tells whether an ODE solver is explicit or implicit.
+"""
+abstract type AbstractODESolverType end
+
+"""
+    ExplicitODESolverType
+
+Trait of an explicit ODE solver.
+"""
+struct ExplicitODESolverType <:
+       AbstractODESolverType end
+
+"""
+    ImplicitODESolverType
+
+Trait of an implicit ODE solver.
+"""
+struct ImplicitODESolverType <:
+       AbstractODESolverType end
 
 #####################
 # AbstractODESolver #
@@ -321,8 +347,10 @@ Abstract type for ODE solvers.
 # Mandatory methods
 - `allocate_subcache`
 """
-abstract type AbstractODESolver{F<:AbstractFormulationType} <:
-              AbstractSolver end
+abstract type AbstractODESolver{
+  F<:AbstractFormulationType,
+  T<:AbstractODESolverType
+} <: AbstractSolver end
 
 # FormulationType trait
 """
@@ -332,6 +360,15 @@ Implement the `FormulationType` trait for an `AbstractODESolver`.
 """
 FormulationType(sv::AbstractODESolver) = FormulationType(typeof(sv))
 FormulationType(::Type{<:AbstractODESolver{F}}) where {F} = F()
+
+# ODESolverType trait
+"""
+    (sv::AbstractODESolver) -> AbstractFormulationType
+
+Implement the `ODESolverType` trait for an `AbstractODESolver`.
+"""
+ODESolverType(sv::AbstractODESolver) = ODESolverType(typeof(sv))
+ODESolverType(::Type{<:AbstractODESolver{F,T}}) where {F,T} = T()
 
 ##################
 # ODESolverCache #
@@ -363,12 +400,22 @@ function allocate_subcache(
   t₋::Real, dt::Real, u₋::AbstractVector,
   u̇_temp::AbstractVector, r_temp::AbstractVector, j_temp::AbstractVector
 )
-  F = FormulationType(sv)
-  allocate_subcache(F, sv, op, t₋, dt, u₋, u̇_temp, r_temp, j_temp)
+  T = OperatorType(op)
+  allocate_subcache(T, sv, op, t₋, dt, u₋, u̇_temp, r_temp, j_temp)
 end
 
 function allocate_subcache(
-  F::AbstractFormulationType, sv::AbstractODESolver, op::AbstractODEOperator,
+  T::AbstractOperatorType, sv::AbstractODESolver, op::AbstractODEOperator,
+  t₋::Real, dt::Real, u₋::AbstractVector,
+  u̇_temp::AbstractVector, r_temp::AbstractVector, j_temp::AbstractVector
+)
+  F = FormulationType(sv)
+  allocate_subcache(T, F, sv, op, t₋, dt, u₋, u̇_temp, r_temp, j_temp)
+end
+
+function allocate_subcache(
+  T::AbstractOperatorType, F::AbstractFormulationType,
+  sv::AbstractODESolver, op::AbstractODEOperator,
   t₋::Real, dt::Real, u₋::AbstractVector,
   u̇_temp::AbstractVector, r_temp::AbstractVector, j_temp::AbstractVector
 )
@@ -451,13 +498,23 @@ function solve!(
   op::AbstractODEOperator, t₋::Real, dt::Real, u₋::AbstractVector,
   cache::ODESolverCache; kwargs...
 )
-  F = FormulationType(sv)
-  solve!(u₊, F, sv, op, t₋, dt, u₋, cache; kwargs...)
+  T = OperatorType(op)
+  solve!(u₊, T, sv, op, t₋, dt, u₋, cache; kwargs...)
 end
 
 function solve!(
-  u₊::AbstractVector, F::AbstractFormulationType, sv::AbstractODESolver,
+  u₊::AbstractVector, T::AbstractOperatorType, sv::AbstractODESolver,
   op::AbstractODEOperator, t₋::Real, dt::Real, u₋::AbstractVector,
+  cache::ODESolverCache; kwargs...
+)
+  F = FormulationType(sv)
+  solve!(u₊, T, F, sv, op, t₋, dt, u₋, cache; kwargs...)
+end
+
+function solve!(
+  u₊::AbstractVector, T::AbstractOperatorType, F::AbstractFormulationType,
+  sv::AbstractODESolver, op::AbstractODEOperator,
+  t₋::Real, dt::Real, u₋::AbstractVector,
   cache::ODESolverCache; kwargs...
 )
   @abstractmethod

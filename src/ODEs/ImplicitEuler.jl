@@ -1,34 +1,35 @@
 #######################
-# ExplicitEulerSolver #
+# ImplicitEulerSolver #
 #######################
 """
-    ExplicitEulerSolver
+    ImplicitEulerSolver
 
-Euler's explicit scheme.
-Type          explicit
+Euler's Implicit scheme.
+Type          Implicit
 Order         1
-Description   res(t₋, u₋, k) = 0
+Description   res(t₊, u₊, k) = 0
 """
-struct ExplicitEulerSolver{F,S} <:
-       AbstractODESolver{F,ExplicitODESolverType}
+struct ImplicitEulerSolver{F,S} <:
+       AbstractODESolver{F,ImplicitODESolverType}
   subsv::S
 
-  function ExplicitEulerSolver{F}(subsv) where {F}
+  function ImplicitEulerSolver{F}(subsv) where {F}
     S = typeof(subsv)
     new{F,S}(subsv)
   end
 end
 
-ExplicitEulerSolver(subsv) = ExplicitEulerSolver{UFormulationType}(subsv)
+ImplicitEulerSolver(subsv) = ImplicitEulerSolver{UFormulationType}(subsv)
 
 """
-    ExplicitEulerSolverCache
+    ImplicitEulerSolverCache
 
-Cache corresponding to an `ExplicitEulerSolver`.
+Cache corresponding to an `ImplicitEulerSolver`.
 """
-struct ExplicitEulerSolverCache{J,C} <:
+struct ImplicitEulerSolverCache{JM,JM2,C} <:
        AbstractSolverCache
-  J_temp::J
+  J_temp::JM
+  J_temp2::JM2
   subcache::C
 end
 
@@ -37,31 +38,37 @@ end
 ####################
 function allocate_subcache(
   T::AbstractOperatorType, F::UFormulationType,
-  sv::ExplicitEulerSolver, op::AbstractODEOperator,
+  sv::ImplicitEulerSolver, op::AbstractODEOperator,
   t₋::Real, dt::Real, u₋::AbstractVector,
   u̇_temp::AbstractVector, r_temp::AbstractVector, j_temp::AbstractVector
 )
+  T = eltype(t₋)
+  J_temp = allocate_jacobian_U̇(op, T)
+
+  t₊ = t₋ + dt
   dt⁻¹ = inv(dt)
 
-  subop = ExplicitEulerUOperator(t₋, u₋, dt⁻¹, u̇_temp, op)
+  subop = ImplicitEulerUOperator(t₊, u₋, dt⁻¹, u̇_temp, j_temp, J_temp, op)
   subsv = sv.subsv
   subus = (r_temp,)
   subcache = allocate_cache(subsv, subop, subus)
 
-  ExplicitEulerSolverCache(nothing, subcache)
+  ImplicitEulerSolverCache(J_temp, nothing, subcache)
 end
 
 function solve!(
   u₊::AbstractVector, T::AbstractOperatorType, F::UFormulationType,
-  sv::ExplicitEulerSolver, op::AbstractODEOperator,
+  sv::ImplicitEulerSolver, op::AbstractODEOperator,
   t₋::Real, dt::Real, u₋::AbstractVector,
   cache::ODESolverCache
 )
   t₊ = t₋ + dt
   dt⁻¹ = inv(dt)
   u̇_temp = cache.u̇_temp
+  j_temp = cache.j_temp
+  J_temp = cache.subcache.J_temp
 
-  subop = ExplicitEulerUOperator(t₋, u₋, dt⁻¹, u̇_temp, op)
+  subop = ImplicitEulerUOperator(t₊, u₋, dt⁻¹, u̇_temp, j_temp, J_temp, op)
   subsv = sv.subsv
   subcache = cache.subcache.subcache
 
@@ -79,96 +86,108 @@ function solve!(
   (t₊, dt, u₊), cache
 end
 
-struct ExplicitEulerUOperator{N,T,U,D,U̇,O} <:
+struct ImplicitEulerUOperator{N,T,U,D,U̇,JV,JM,O} <:
        AbstractSystemOperator{N,N,NonlinearOperatorType}
-  t₋::T
+  t₊::T
   u₋::U
   dt⁻¹::D
   u̇_temp::U̇
+  j_temp::JV
+  J_temp::JM
   odeop::O
 
-  function ExplicitEulerUOperator(t₋, u₋, dt⁻¹, u̇_temp, op)
+  function ImplicitEulerUOperator(t₊, u₋, dt⁻¹, u̇_temp, j_temp, J_temp, op)
     N = length(u₋)
-    T = typeof(t₋)
+    T = typeof(t₊)
     U = typeof(u₋)
     D = typeof(dt⁻¹)
     U̇ = typeof(u̇_temp)
+    JV = typeof(j_temp)
+    JM = typeof(J_temp)
     O = typeof(op)
-    new{N,T,U,D,U̇,O}(t₋, u₋, dt⁻¹, u̇_temp, op)
+    new{N,T,U,D,U̇,JV,JM,O}(t₊, u₋, dt⁻¹, u̇_temp, j_temp, J_temp, op)
   end
 end
 
 function residual!(
-  r::AbstractVector, op::ExplicitEulerUOperator,
+  r::AbstractVector, op::ImplicitEulerUOperator,
   us::NTuple{1,AbstractVector}
 )
-  t₋, u₋, dt⁻¹, u̇_temp = op.t₋, op.u₋, op.dt⁻¹, op.u̇_temp
+  t₊, u₋, dt⁻¹, u̇_temp = op.t₊, op.u₋, op.dt⁻¹, op.u̇_temp
   odeop = op.odeop
 
   u, = us
   _make_u̇!(u̇_temp, u, u₋, dt⁻¹)
 
-  residual!(r, odeop, t₋, u₋, u̇_temp)
+  residual!(r, odeop, t₊, u, u̇_temp)
   r
 end
 
 function jacobian!(
-  J::AbstractMatrix, op::ExplicitEulerUOperator, k::Val{1},
+  J::AbstractMatrix, op::ImplicitEulerUOperator, k::Val{1},
   us::NTuple{1,AbstractVector}
 )
-  t₋, u₋, dt⁻¹, u̇_temp = op.t₋, op.u₋, op.dt⁻¹, op.u̇_temp
+  t₊, u₋, dt⁻¹, u̇_temp, J_temp = op.t₊, op.u₋, op.dt⁻¹, op.u̇_temp, op.J_temp
   odeop = op.odeop
 
   u, = us
   _make_u̇!(u̇_temp, u, u₋, dt⁻¹)
 
-  jacobian_U̇!(J, odeop, t₋, u₋, u̇_temp)
-  rmul!(J, dt⁻¹)
+  jacobian_U!(J, odeop, t₊, u, u̇_temp)
+  jacobian_U̇!(J_temp, odeop, t₊, u, u̇_temp)
+  axpy!(dt⁻¹, J_temp, J)
   J
 end
 
 function directional_jacobian!(
-  j::AbstractVector, J, op::ExplicitEulerUOperator, k::Val{1},
+  j::AbstractVector, J, op::ImplicitEulerUOperator, k::Val{1},
   us::NTuple{1,AbstractVector}, v::AbstractVector
 )
-  t₋, u₋, dt⁻¹, u̇_temp = op.t₋, op.u₋, op.dt⁻¹, op.u̇_temp
+  t₊, u₋, dt⁻¹, u̇_temp, j_temp = op.t₊, op.u₋, op.dt⁻¹, op.u̇_temp, op.j_temp
   odeop = op.odeop
 
   u, = us
   _make_u̇!(u̇_temp, u, u₋, dt⁻¹)
 
-  directional_jacobian_U̇!(j, J, odeop, t₋, u₋, u̇_temp, v)
-  rmul!(j, dt⁻¹)
+  directional_jacobian_U!(j, J, odeop, t₊, u, u̇_temp, v)
+  directional_jacobian_U̇!(j_temp, J, odeop, t₊, u, u̇_temp, v)
+  axpy!(dt⁻¹, j_temp, j)
   j
 end
 
-#################
+####################
 # U̇FormulationType #
-#################
+####################
 function allocate_subcache(
   T::AbstractOperatorType, F::U̇FormulationType,
-  sv::ExplicitEulerSolver, op::AbstractODEOperator,
+  sv::ImplicitEulerSolver, op::AbstractODEOperator,
   t₋::Real, dt::Real, u₋::AbstractVector,
   u̇_temp::AbstractVector, r_temp::AbstractVector, j_temp::AbstractVector
 )
-  subop = ExplicitEulerU̇Operator(t₋, u₋, op)
+  T = eltype(t₋)
+  J_temp = allocate_jacobian_U̇(op, T)
+
+  t₊ = t₋ + dt
+  subop = ImplicitEulerU̇Operator(t₊, u₋, dt, j_temp, J_temp, op)
   subsv = sv.subsv
   subus = (u̇_temp,)
   subcache = allocate_cache(subsv, subop, subus)
 
-  ExplicitEulerSolverCache(nothing, subcache)
+  ImplicitEulerSolverCache(J_temp, nothing, subcache)
 end
 
 function solve!(
   u₊::AbstractVector, T::AbstractOperatorType, F::U̇FormulationType,
-  sv::ExplicitEulerSolver, op::AbstractODEOperator,
+  sv::ImplicitEulerSolver, op::AbstractODEOperator,
   t₋::Real, dt::Real, u₋::AbstractVector,
   cache::ODESolverCache
 )
   t₊ = t₋ + dt
   u̇_temp = cache.u̇_temp
+  j_temp = cache.j_temp
+  J_temp = cache.subcache.J_temp
 
-  subop = ExplicitEulerU̇Operator(t₋, u₋, op)
+  subop = ImplicitEulerU̇Operator(t₊, u₋, dt, j_temp, J_temp, op)
   subsv = sv.subsv
   subcache = cache.subcache.subcache
 
@@ -188,71 +207,91 @@ function solve!(
   (t₊, dt, u₊), cache
 end
 
-struct ExplicitEulerU̇Operator{N,T,U,O} <:
+struct ImplicitEulerU̇Operator{N,T,U,D,JV,JM,O} <:
        AbstractSystemOperator{N,N,NonlinearOperatorType}
-  t₋::T
+  t₊::T
   u₋::U
+  dt::D
+  j_temp::JV
+  J_temp::JM
   odeop::O
 
-  function ExplicitEulerU̇Operator(t₋, u₋, op)
+  function ImplicitEulerU̇Operator(t₊, u₋, dt, j_temp, J_temp, op)
     N = length(u₋)
-    T = typeof(t₋)
+    T = typeof(t₊)
     U = typeof(u₋)
+    D = typeof(dt)
+    JV = typeof(j_temp)
+    JM = typeof(J_temp)
     O = typeof(op)
-    new{N,T,U,O}(t₋, u₋, op)
+    new{N,T,U,D,JV,JM,O}(t₊, u₋, dt, j_temp, J_temp, op)
   end
 end
 
 function residual!(
-  r::AbstractVector, op::ExplicitEulerU̇Operator,
+  r::AbstractVector, op::ImplicitEulerU̇Operator,
   us::NTuple{1,AbstractVector}
 )
-  t₋, u₋ = op.t₋, op.u₋
+  t₊, dt, u₋, j_temp = op.t₊, op.dt, op.u₋, op.j_temp
   odeop = op.odeop
 
   k, = us
 
-  residual!(r, odeop, t₋, u₋, k)
+  u_temp = u₋
+  axpy!(dt, k, u_temp)
+  residual!(r, odeop, t₊, u_temp, k)
+  axpy!(-dt, k, u_temp)
   r
 end
 
 function jacobian!(
-  J::AbstractMatrix, op::ExplicitEulerU̇Operator, k::Val{1},
+  J::AbstractMatrix, op::ImplicitEulerU̇Operator, k::Val{1},
   us::NTuple{1,AbstractVector}
 )
-  t₋, u₋ = op.t₋, op.u₋
+  t₊, dt, u₋, J_temp = op.t₊, op.dt, op.u₋, op.J_temp
   odeop = op.odeop
 
   k, = us
 
-  jacobian_U̇!(J, odeop, t₋, u₋, k)
+  u_temp = u₋
+  axpy!(dt, k, u_temp)
+  jacobian_U̇!(J, odeop, t₊, u_temp, k)
+  jacobian_U!(J_temp, odeop, t₊, u_temp, k)
+  axpy!(dt, J_temp, J)
+  axpy!(-dt, k, u_temp)
   J
 end
 
 function directional_jacobian!(
-  j::AbstractVector, J, op::ExplicitEulerU̇Operator, k::Val{1},
+  j::AbstractVector, J, op::ImplicitEulerU̇Operator, k::Val{1},
   us::NTuple{1,AbstractVector}, v::AbstractVector
 )
-  t₋, u₋ = op.t₋, op.u₋
+  t₊, dt, u₋, j_temp = op.t₊, op.dt, op.u₋, op.j_temp
   odeop = op.odeop
 
   k, = us
 
-  directional_jacobian_U̇!(j, J, odeop, t₋, u₋, k, v)
+  u_temp = u₋
+  axpy!(dt, k, u_temp)
+  directional_jacobian_U̇!(j, J, odeop, t₊, u_temp, k, v)
+  directional_jacobian_U!(j_temp, J, odeop, t₊, u_temp, k, v)
+  axpy!(dt, j_temp, j)
+  axpy!(-dt, k, u_temp)
   j
 end
 
-###################################
-# AbstractQuasilinearOperatorType #
-###################################
+##############################
+# AbstractLinearOperatorType #
+##############################
 function allocate_subcache(
-  T::AbstractQuasilinearOperatorType,
-  sv::ExplicitEulerSolver, op::AbstractODEOperator,
+  T::AbstractLinearOperatorType,
+  sv::ImplicitEulerSolver, op::AbstractODEOperator,
   t₋::Real, dt::Real, u₋::AbstractVector,
   u̇_temp::AbstractVector, r_temp::AbstractVector, j_temp::AbstractVector
 )
   T = eltype(t₋)
   J_temp = allocate_jacobian_U̇(op, T)
+  J_temp2 = allocate_jacobian_U̇(op, T)
 
   fill!(u̇_temp, 0)
   jacobian_U̇!(J_temp, op, t₋, u₋, u̇_temp)
@@ -264,12 +303,12 @@ function allocate_subcache(
   subus = (u̇_temp,)
   subcache = allocate_cache(subsv, subop, subus)
 
-  ExplicitEulerSolverCache(J_temp, subcache)
+  ImplicitEulerSolverCache(J_temp, J_temp2, subcache)
 end
 
 function solve!(
-  u₊::AbstractVector, T::AbstractQuasilinearOperatorType,
-  sv::ExplicitEulerSolver, op::AbstractODEOperator,
+  u₊::AbstractVector, T::AbstractLinearOperatorType,
+  sv::ImplicitEulerSolver, op::AbstractODEOperator,
   t₋::Real, dt::Real, u₋::AbstractVector,
   cache::ODESolverCache
 )
@@ -277,17 +316,22 @@ function solve!(
   u̇_temp = cache.u̇_temp
   r_temp = cache.r_temp
   J_temp = cache.subcache.J_temp
+  J_temp2 = cache.subcache.J_temp2
 
   # Some tricks here
-  # M(t, u) u̇ = f(t, u)
-  # M(t, u) = jac_u̇(u̇=0)
-  # f(t, u) = -res(u̇=0)
+  # M u̇ = K u + f
+  # M u̇ = K (u₋ + dt u̇) + f
+  # (M - dt K) u̇ = K u₋ + f
+  # M - dt K = jac_U̇(u=Any,u̇=Any) + dt * jac_U(u=Any,u̇=Any)
+  # K u₋ + f = -res(U=u₋,U̇=0)
   fill!(u̇_temp, 0)
-  jacobian_U̇!(J_temp, op, t₋, u₋, u̇_temp)
-  residual!(r_temp, op, t₋, u₋, u̇_temp)
+  jacobian_U̇!(J_temp, op, t₊, u₋, u̇_temp)
+  jacobian_U!(J_temp2, op, t₊, u₋, u̇_temp)
+  axpy!(dt, J_temp2, J_temp)
+  residual!(r_temp, op, t₊, u₋, u̇_temp)
   rmul!(r_temp, -1)
 
-  subop = ExplicitEulerLOperator(J_temp, r_temp)
+  subop = ImplicitEulerLOperator(J_temp, r_temp)
   subsv = sv.subsv
   subcache = cache.subcache.subcache
 
@@ -306,4 +350,4 @@ function solve!(
   (t₊, dt, u₊), cache
 end
 
-ExplicitEulerLOperator(A, b) = LinearSystemOperator(A, b)
+ImplicitEulerLOperator(A, b) = LinearSystemOperator(A, b)

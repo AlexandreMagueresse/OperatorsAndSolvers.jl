@@ -13,8 +13,8 @@ using Plots
 ##############
 T = Float64
 
-# problem_id = 1 # Stiff linear ODE
-problem_id = 2 # Nonlinear ODE
+problem_id = 1 # Stiff linear ODE
+# problem_id = 2 # Nonlinear ODE
 # problem_id = 3 # Harmonic oscillator
 # problem_id = 4 # 1D minimisation (Gradient flow)
 
@@ -23,7 +23,7 @@ if problem_id == 1
   N = 1
 
   struct MyOp1{T,F,G} <:
-         AbstractQuasilinearODEOperator{N}
+         AbstractLinearODEOperator{N}
     # AbstractODEOperator{N,NonlinearOperatorType}
     λ::T
     g::F
@@ -222,7 +222,6 @@ elseif problem_id == 3
   u₋ = T[0, B*ω]
 
   has_solution = true
-  A = u₋[1] - g(t₋)
   function solution!(u::AbstractVector, t::Real)
     u[1] = B * sin(ω * t)
     u[2] = B * ω * cos(ω * t)
@@ -300,25 +299,41 @@ dt = (tₑ - t₋) / 100
 #################
 # System solver #
 #################
-F = Formulation_U
-# F = Formulation_U̇
+F = UFormulationType
+# F = U̇FormulationType
 
-if op isa AbstractQuasilinearODEOperator
-  subsv = LUSolver()
+SV = ExplicitEulerSolver
+# SV = ImplicitEulerSolver
+SVF = SV{F}
+
+# Decide whether to use linear or nonlinear solver
+SvType = ODESolverType(SVF)
+FormType = FormulationType(SVF)
+OpType = OperatorType(op)
+
+use_linear_solver = (SvType isa ExplicitODESolverType) && (OpType isa AbstractQuasilinearOperatorType)
+use_linear_solver |= (SvType isa ImplicitODESolverType) && (OpType isa AbstractLinearOperatorType)
+
+maxiter = 1_0
+atol = 1000 * eps(T)
+rtol = 1000 * eps(T)
+config = IterativeSystemSolverConfig(maxiter, atol, rtol)
+
+if use_linear_solver
+  # Direct solver
+  # subsv = LUSolver()
+
+  # Conjugate gradient
+  subsv = ConjugateGradientSolver(config)
 else
-  maxiter = 1_000
-  atol = 1000 * eps(T)
-  rtol = 1000 * eps(T)
-  config = IterativeSystemSolverConfig(maxiter, atol, rtol)
-
   # Newton-Raphson
   # lsv = LUSolver()
   # subsv = NewtonRaphsonSolver(lsv, config)
 
   # Gradient descent
-  if F == Formulation_U
+  if FormType isa UFormulationType
     α = T(dt^2 / 3)
-  elseif F == Formulation_U̇
+  elseif FormType isa U̇FormulationType
     α = T(1 / 3)
   end
   lssv = ConstantStepper(α)
@@ -328,7 +343,7 @@ end
 ##############
 # ODE Solver #
 ##############
-sv = ExplicitEulerSolver{F}(subsv)
+sv = SVF(subsv)
 
 #############
 # Main loop #
@@ -350,7 +365,7 @@ while t₋ < tₑ
   if t₋ + dt > tₑ
     break
   end
-  (t₊, dt, u₊), cache = solve!(u₊, sv, op, t₋, dt, u₋)
+  (t₊, dt, u₊), cache = solve!(u₊, sv, op, t₋, dt, u₋, cache)
   t₋ = t₊
   copy!(u₋, u₊)
 end

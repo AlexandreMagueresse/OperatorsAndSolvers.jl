@@ -26,6 +26,9 @@ Abstract type for iterative solvers of systems of equations.
 - `get_config`
 - `allocate_subcache`
 - `update_direction!`
+
+# Optional methods
+- `reset_subcache!`
 """
 abstract type AbstractIterativeSystemSolver <:
               AbstractSolver end
@@ -52,6 +55,21 @@ function allocate_subcache(
   us::NTuple{1,AbstractVector}, r::AbstractVector, Δ::AbstractVector
 )
   @abstractmethod
+end
+
+"""
+  reset_subcache!(
+    cache::AbstractSolverCache, sv::AbstractIterativeSystemSolver,
+    op::AbstractSystemOperator, us::NTuple{1,AbstractVector}
+  ) -> AbstractSolverCache
+
+Reset the subcache of the iterative solver.
+"""
+function reset_subcache!(
+  cache::AbstractSolverCache, sv::AbstractIterativeSystemSolver,
+  op::AbstractSystemOperator, us::NTuple{1,AbstractVector}
+)
+  cache
 end
 
 """
@@ -95,6 +113,22 @@ a converged state.
 """
 function isconverged(cache::IterativeSystemSolverCache)
   isconverged(IterativeSolverFlag(cache.flag[]))
+end
+
+"""
+    reset_cache!(
+      cache::IterativeSystemSolverCache, sv::AbstractSystemSolver,
+      op::AbstractSystemOperator, us::NTuple{1,AbstractVector}
+    ) -> IterativeSystemSolverCache
+
+Reset the cache of the iterative solver.
+"""
+function reset_cache!(
+  cache::IterativeSystemSolverCache, sv::AbstractIterativeSystemSolver,
+  op::AbstractSystemOperator, us::NTuple{1,AbstractVector}
+)
+  reset_subcache!(cache.subcache, sv, op, us)
+  cache
 end
 
 # AbstractSolver interface

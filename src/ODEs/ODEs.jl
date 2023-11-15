@@ -43,13 +43,20 @@ export AbstractSemilinearODEOperator
 export AbstractLinearODEOperator
 
 export AbstractFormulationType
-export Formulation_U
-export Formulation_U̇
+export UFormulationType
+export U̇FormulationType
+export AbstractODESolverType
+export ImplicitODESolverType
+export ExplicitODESolverType
 export AbstractODESolver
 export FormulationType
+export ODESolverType
 export ODESolverCache
 
 include("ExplicitEuler.jl")
 export ExplicitEulerSolver
+
+include("ImplicitEuler.jl")
+export ImplicitEulerSolver
 
 end # module ODEs

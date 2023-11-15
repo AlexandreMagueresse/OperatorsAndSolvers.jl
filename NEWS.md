@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Rewriting of the code in terms of operators.
 - Clear separation between line search solvers, solvers for systems of equations and ODE solvers.
+- Conjugate gradient, Newton-Raphson nonlinear solvers.
 
 ## [0.1.0] - 2023-11-06
 
